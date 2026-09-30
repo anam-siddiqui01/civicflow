@@ -32,7 +32,10 @@ export function IssueDetail() {
   const languageCounts = issue.languageCounts ?? linkedReports.reduce<Record<string, number>>((counts, report) => ({ ...counts, [report.language]: (counts[report.language] ?? 0) + 1 }), {})
   const inputTypeCounts = issue.inputTypeCounts ?? linkedReports.reduce<Record<string, number>>((counts, report) => ({ ...counts, [report.inputType]: (counts[report.inputType] ?? 0) + 1 }), {})
   const languageStats = Object.entries(languageCounts).filter((entry): entry is [string, number] => typeof entry[1] === 'number').sort((left, right) => right[1] - left[1])
-  const inputTypeStats = ['Voice', 'Text', 'Photo'].flatMap((type) => typeof inputTypeCounts[type] === 'number' ? [[type, inputTypeCounts[type] as number] as [string, number]] : [])
+  const inputTypeStats = (['Voice', 'Text', 'Photo'] as const).flatMap((type) => {
+  const count = inputTypeCounts[type as keyof typeof inputTypeCounts]
+  return typeof count === 'number' ? [[type, count] as [string, number]] : []
+})
   const priorityFactors = [...priority.factors].sort((left, right) => priorityLabelOrder.indexOf(left.label) - priorityLabelOrder.indexOf(right.label))
   const sampleReports = linkedReports.slice(0, 4)
   const photoReports = linkedReports.filter((report) => Boolean(report.imageUrl)).slice(0, 3)
@@ -58,13 +61,13 @@ export function IssueDetail() {
           <div className="issue-analysis-grid analysis-grid"><div className="analysis-field"><span>Category</span><strong>{issue.id === 'issue-parking-8' ? 'Parking / Traffic' : issue.category}</strong></div><div className="analysis-field"><span>Urgency · severity</span><strong>{issue.urgency} · {issue.severity}</strong></div><div className="analysis-field"><span>Suggested department</span><strong>{issue.suggestedDepartment}</strong></div><div className="analysis-field"><span>Estimated population affected</span><strong>About {issue.affectedPopulationEstimate.toLocaleString()}</strong></div></div>
         </Card>
 
-        <Card className="card-pad" ref={reportsRef}>
+        <div ref={reportsRef}><Card className="card-pad">
           <div className="section-heading"><div><span className="section-index">02</span><h2 className="section-title">Citizen reports</h2><p className="section-caption">Aggregated reports connected to this underlying issue</p></div><span className="badge status-needs-review"><MessageSquareText size={11} /> {issue.reportCount.toLocaleString()} related reports</span></div>
           <div className="report-distribution-grid">
             <div className="report-distribution"><div className="distribution-heading"><Languages size={14} /><h3>Languages</h3><span>{hasAggregateCounts ? 'All reports' : 'Available samples'}</span></div>{languageStats.map(([language, count]) => <div className="distribution-row" key={language}><div><span>{language}</span><strong>{count}</strong></div><div className="distribution-track"><span style={{ width: `${Math.min(100, count / issue.reportCount * 100)}%` }} /></div></div>)}</div>
             <div className="report-distribution"><div className="distribution-heading"><FileText size={14} /><h3>Input types</h3><span>{hasAggregateCounts ? 'All reports' : 'Available samples'}</span></div>{inputTypeStats.map(([type, count]) => <div className="distribution-row" key={type}><div><span>{type}</span><strong>{count}</strong></div><div className="distribution-track distribution-track-alt"><span style={{ width: `${Math.min(100, count / issue.reportCount * 100)}%` }} /></div></div>)}</div>
           </div>
-        </Card>
+        </Card></div>
 
         <Card className="card-pad">
           <div className="section-heading"><div><span className="section-index">03</span><h2 className="section-title">Evidence</h2><p className="section-caption">Sample attachments and excerpts from related reports</p></div><span className="badge status-under-review"><Camera size={11} /> {issue.photoCount} photos · {issue.evidenceCount} evidence items</span></div>

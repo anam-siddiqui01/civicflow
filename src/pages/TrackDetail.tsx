@@ -32,34 +32,70 @@ export function TrackDetail() {
   const [alternativeTimeWindow, setAlternativeTimeWindow] = useState('')
   const [conflictNote, setConflictNote] = useState('')
   const report = getCitizenReports().find((item) => item.id === id)
-  const issue = report?.issueClusterId ? getIssueClusters().find((item) => item.id === report.issueClusterId) : undefined
-  const action = report?.issueClusterId ? getIssueActions(report.issueClusterId)[0] : undefined
-  const reportId = report?.id
-  const actionId = action?.id
+const issue = report?.issueClusterId
+  ? getIssueClusters().find((item) => item.id === report.issueClusterId)
+  : undefined
+const action = report?.issueClusterId
+  ? getIssueActions(report.issueClusterId)[0]
+  : undefined
+const reportId = report?.id
+const actionId = action?.id
 
-  useEffect(() => {
-    setCitizenResponse(reportId && actionId ? getCitizenActionResponse(actionId, reportId) ?? null : null)
-  }, [reportId, actionId])
+useEffect(() => {
+  if (!reportId || !actionId) {
+    setCitizenResponse(null)
+    return
+  }
 
-  if (!report) return <><PageHeader eyebrow="Citizen services" title="Report not found" description="Check the reference ID and try again." /><Card><EmptyState title="We couldn't find that report" message="This reference may be from another browser or demo session." action={<Link className="button button-secondary button-small" to="/track"><ArrowLeft size={13} /> Back to reports</Link>} /></Card></>
+  setCitizenResponse(
+    getCitizenActionResponse(actionId, reportId) ?? null
+  )
+}, [reportId, actionId])
+
+if (!report) {
+  return (
+    <>
+      <PageHeader
+        eyebrow="Citizen services"
+        title="Report not found"
+        description="Check the reference ID and try again."
+      />
+      <Card>
+        <EmptyState
+          title="We couldn't find that report"
+          message="This reference may be from another browser or demo session."
+          action={
+            <Link
+              className="button button-secondary button-small"
+              to="/track"
+            >
+              <ArrowLeft size={13} /> Back to reports
+            </Link>
+          }
+        />
+      </Card>
+    </>
+  )
+}
+
 
   const actionDate = action?.expectedDate ? new Date(`${action.expectedDate}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'To be proposed'
   const submittedDate = new Date(report.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
   const displayedReportStatus = action?.workflowStage ? citizenStatusByStage[action.workflowStage] : report.status
 
   function markReady() {
-    if (!action) return
-    const response = submitCitizenActionResponse({ actionId: action.id, citizenReportId: report.id, response: 'Ready' })
+    if (!action || !reportId) return
+    const response = submitCitizenActionResponse({ actionId: action.id, citizenReportId: reportId, response: 'Ready' })    
     setCitizenResponse(response)
     setShowConflictForm(false)
   }
 
   function submitConflict(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!action) return
+    if (!action || !reportId) return
     const response = submitCitizenActionResponse({
       actionId: action.id,
-      citizenReportId: report.id,
+      citizenReportId: reportId,
       response: 'Conflict',
       reason: conflictReason,
       alternativeDate,

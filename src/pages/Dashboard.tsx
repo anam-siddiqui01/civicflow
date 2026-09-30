@@ -1,4 +1,4 @@
-import { Activity, ArrowDownRight, ArrowRight, ArrowUp, ArrowUpRight, Camera, CheckCircle2, Clock3, FileText, MapPin, Minus, RotateCcw, ShieldAlert, TrendingDown, TrendingUp, TriangleAlert } from 'lucide-react'
+import { Activity, ArrowDownRight, ArrowRight, ArrowUpRight, Camera, CheckCircle2, Clock3, FileText, MapPin, Minus, RotateCcw, ShieldAlert, TrendingDown, TrendingUp, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Card, PageHeader, PriorityBadge, StatusBadge } from '../components/ui'
@@ -37,7 +37,14 @@ export function Dashboard() {
     setStatusFilter('All statuses')
   }
   const hasFilters = priorityFilter !== 'All priorities' || categoryFilter !== 'All categories' || wardFilter !== 'All wards' || statusFilter !== 'All statuses'
-  const stats = [
+    const stats: Array<{
+    label: string
+    value: string
+    note: string
+    icon: typeof FileText
+    positive?: boolean
+    alert?: boolean
+  }> = [
     { label: 'Total reports', value: totalReports.toLocaleString(), note: 'Across issue clusters', icon: FileText },
     { label: 'Active issue clusters', value: String(activeIssues), note: 'Underlying issues, not individual reports', icon: Activity },
     { label: 'Critical / High priority', value: String(highPriorityCount), note: 'CivicFlow recommendations', icon: ShieldAlert, alert: true },

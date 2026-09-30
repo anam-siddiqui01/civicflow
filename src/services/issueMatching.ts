@@ -6,8 +6,8 @@ interface MatchInput {
 }
 
 const parkingTerms = /\b(parking|parked|vehicles?|lane obstruction|blocked lane|traffic)\b|गाड़ियां|गाड़ियाँ|गाड़ी|गाड़ियां|गाड्या|उभ्या|केल्यामुळे|अडतो|रास्ता बंद|रस्ता अड/u
-const garbageTerms = /\b(garbage|waste|bins?)\b|कचरा|कूड़ा|कचरा|कचर/u
-const waterTerms = /\b(water|supply|pressure)\b|पानी|जल|पाणी|पुरवठा/u
+const garbageTerms = /\b(garbage|waste|bins?|sanitation|kachra)\b|कचरा|कूड़ा|कचर/u
+const waterTerms = /\b(water|supply|pressure|tap)\b|पानी|जल|पाणी|पुरवठा|आपूर्ति/u
 const roadTerms = /\b(road|pothole|pavement)\b|सड़क|सड़क|रस्ता|खड्डा|गड्ढा/u
 const lightingTerms = /\b(streetlights?|street lamps?|electricity outage)\b|स्ट्रीट लाइट|बत्ती|दिवे|वीज/u
 
@@ -26,18 +26,39 @@ export function normalizeIssueType(description: string, category: string, locati
   return 'other civic issue'
 }
 
+function slug(value: string): string {
+  return value.normalize('NFKD').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').slice(0, 48) || 'unknown'
+}
+
+export function createDynamicIssueId(issueType: string, location: string, ward: number | null): string {
+  return `issue-${slug(issueType)}-${slug(location)}-ward-${ward ?? 'unknown'}`
+}
+
 export function matchIssueCluster({ description, category, location, ward }: MatchInput): string | null {
   const normalizedCategory = category.toLowerCase()
   const searchableText = `${description} ${location}`
   const reportWard = resolveWard(description, location, ward)
-  const communityLocation = /community\s*cent(?:er|re)|कम्युनिटी\s*सेंटर|समुदाय केंद्र/i.test(searchableText)
+  const issueType = normalizeIssueType(description, category, location)
+  const knownWardByType: Record<string, number> = {
+    'lane obstruction': 8,
+    'waste accumulation': 7,
+    'water supply disruption': 12,
+    'road damage': 4,
+    'streetlight outage': 3,
+  }
+  const knownIssueByType: Record<string, string> = {
+    'lane obstruction': 'issue-parking-8',
+    'waste accumulation': 'issue-garbage-7',
+    'water supply disruption': 'issue-water-12',
+    'road damage': 'issue-road-4',
+    'streetlight outage': 'issue-lights-3',
+  }
+  const expectedWard = knownWardByType[issueType]
+  const knownLocation = new RegExp(expectedWard === 12 ? 'lakeview' : expectedWard === 8 ? 'juniper|community\\s*cent(?:er|re)' : expectedWard === 7 ? 'market' : expectedWard === 4 ? 'cedar' : 'willow', 'i').test(searchableText)
+  if (knownIssueByType[issueType] && (reportWard === expectedWard || (reportWard === null && knownLocation))) return knownIssueByType[issueType]
 
-  const parkingRelated = normalizedCategory === 'parking / traffic' || parkingTerms.test(searchableText)
-  if (parkingRelated && (reportWard === null || reportWard === 8) && (reportWard === 8 || communityLocation || normalizedCategory === 'parking / traffic')) return 'issue-parking-8'
-  if ((normalizedCategory === 'garbage' || garbageTerms.test(searchableText)) && (reportWard === null || reportWard === 7)) return 'issue-garbage-7'
-  if ((normalizedCategory.includes('water') || waterTerms.test(searchableText)) && (reportWard === null || reportWard === 12)) return 'issue-water-12'
-  if ((normalizedCategory === 'roads' || roadTerms.test(searchableText)) && (reportWard === null || reportWard === 4)) return 'issue-road-4'
-  if ((normalizedCategory === 'electricity' || normalizedCategory === 'streetlights' || lightingTerms.test(searchableText)) && (reportWard === null || reportWard === 3)) return 'issue-lights-3'
-
-  return null
+  const categoryType = normalizeIssueType('', normalizedCategory, location)
+  const resolvedType = issueType === 'other civic issue' ? categoryType : issueType
+  if (!location.trim() && reportWard === null) return null
+  return createDynamicIssueId(resolvedType, location || `Ward ${reportWard}`, reportWard)
 }

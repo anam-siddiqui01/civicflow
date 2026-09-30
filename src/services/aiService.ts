@@ -8,8 +8,8 @@ const urgencyLevels: CivicUrgency[] = ['Low', 'Moderate', 'High', 'Critical']
 const severityLevels: CivicSeverity[] = ['Low', 'Moderate', 'High', 'Critical']
 
 function detectLanguage(text: string): DetectedLanguage {
-  if (/(जवळ|गाड्या|उभ्या|केल्यामुळे|अडतो|पाणी|पुरवठा)/u.test(text)) return 'Marathi'
-  if (/(गाड़ियां|गाड़ियाँ|गाड़ी|खड़ी|रास्ता|बंद|कम्युनिटी|सड़क|कूड़ा|पानी)/u.test(text)) return 'Hindi'
+  if (/(जवळ|गाड्या|उभ्या|केल्यामुळे|अडतो|पाणी|पुरवठा|आमच्या|भागात|दिवस)/u.test(text)) return 'Marathi'
+  if (/(गाड़ियां|गाड़ियाँ|गाड़ी|खड़ी|रास्ता|बंद|कम्युनिटी|सड़क|कूड़ा|पानी|हमारे|इलाके|आपूर्ति|दिन)/u.test(text)) return 'Hindi'
   return /[A-Za-z]/.test(text) ? 'English' : 'Other'
 }
 
@@ -37,8 +37,9 @@ function analyzeWithDemoRules(report: AnalysisInput): ReportAnalysis {
   const relatedIssueId = matchIssueCluster(report)
   const issue = issueClusters.find((cluster) => cluster.id === relatedIssueId)
   const detectedLanguage = detectLanguage(`${report.description} ${report.location}`)
-  const urgency: CivicUrgency = relatedIssueId === 'issue-water-12' ? 'Critical' : relatedIssueId ? 'High' : 'Moderate'
-  const severity: CivicSeverity = /no water|immediate danger|unsafe|life-threatening/i.test(report.description) ? 'Critical' : relatedIssueId ? 'High' : 'Moderate'
+  const urgentSignal = /no water|without water|three days|\b[2-9] days\b|immediate danger|unsafe|life-threatening|नहीं आ रहा|तीन दिन|तीन दिवस|पाणी येत नाही/u.test(report.description)
+  const urgency: CivicUrgency = issue?.urgency ?? (urgentSignal ? 'High' : relatedIssueId ? 'High' : 'Moderate')
+  const severity: CivicSeverity = /immediate danger|unsafe|life-threatening|बिल्कुल नहीं|पूर्णपणे बंद/u.test(report.description) ? 'Critical' : urgentSignal ? 'High' : relatedIssueId ? 'High' : 'Moderate'
   const locationWard = `${report.location} ${report.description}`.match(/\bward\s*(\d+)\b/i)?.[1]
   const location = report.ward ? `Ward ${report.ward}` : locationWard ? `Ward ${locationWard}` : report.location
   const departmentByCategory: Record<string, string> = {
@@ -53,6 +54,12 @@ function analyzeWithDemoRules(report: AnalysisInput): ReportAnalysis {
   }
   const category = normalizedCategory(relatedIssueId, report.category)
   const recommendedAction = issue?.recommendedAction ?? 'Review the report details and determine an appropriate next step.'
+  const evidence = [
+    ...(report.imageUrl ? ['Photo attached for visual review'] : []),
+    ...(urgentSignal ? ['Report describes an extended or urgent service disruption'] : []),
+    ...(report.ward || locationWard ? ['Ward or locality supplied by the reporter'] : []),
+    ...(detectedLanguage !== 'English' ? [`Report analyzed in ${detectedLanguage}`] : []),
+  ]
   return {
     category,
     summary: summarizeIssue(relatedIssueId, report.description),
@@ -61,7 +68,8 @@ function analyzeWithDemoRules(report: AnalysisInput): ReportAnalysis {
     urgency,
     severity,
     affectedPopulationEstimate: issue?.affectedPopulationEstimate ?? 40,
-    evidenceStrength: report.imageUrl ? 88 : report.inputType === 'Voice' ? 62 : 54,
+    evidenceStrength: Math.min(100, (report.imageUrl ? 42 : 0) + (report.inputType === 'Voice' ? 15 : 10) + (report.ward || locationWard ? 25 : 0) + (urgentSignal ? 13 : 0)),
+    evidence,
     suggestedDepartment: issue?.suggestedDepartment ?? departmentByCategory[category] ?? 'Constituency Office',
     recommendedAction,
     relatedIssueId,
@@ -88,6 +96,7 @@ function readRemoteAnalysis(value: unknown, fallback: ReportAnalysis): ReportAna
     severity: value.severity as CivicSeverity,
     affectedPopulationEstimate: value.affectedPopulationEstimate as number,
     evidenceStrength: value.evidenceStrength as number,
+    evidence: Array.isArray(value.evidence) && value.evidence.every((item) => typeof item === 'string') ? value.evidence as string[] : fallback.evidence,
     suggestedDepartment: value.suggestedDepartment as string,
     recommendedAction: value.recommendedAction as string,
     relatedIssueId: typeof value.relatedIssueId === 'string' ? value.relatedIssueId : fallback.relatedIssueId,
@@ -100,15 +109,20 @@ export async function analyzeCitizenReport(report: AnalysisInput): Promise<Repor
   const endpoint = import.meta.env.VITE_CIVICFLOW_AI_ENDPOINT?.trim()
   if (!endpoint) return fallback
 
+  const controller = new AbortController()
+  const timeoutId = window.setTimeout(() => controller.abort(), 8000)
   try {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ report }),
+      signal: controller.signal,
     })
     if (!response.ok) return fallback
     return readRemoteAnalysis(await response.json(), fallback) ?? fallback
   } catch {
     return fallback
+  } finally {
+    window.clearTimeout(timeoutId)
   }
 }

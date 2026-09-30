@@ -22,6 +22,7 @@ export function CitizenReportPage() {
   const [imageLoading, setImageLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [errors, setErrors] = useState<Partial<Record<FieldName, string>>>({})
+  const [submissionError, setSubmissionError] = useState('')
   const [toastMessage, setToastMessage] = useState('')
   const closeToast = useCallback(() => setToastMessage(''), [])
   const matchedIssue = submitted?.issueClusterId ? getIssueClusters().find((issue) => issue.id === submitted.issueClusterId) : undefined
@@ -52,11 +53,18 @@ export function CitizenReportPage() {
       setImageName('')
       setImageLoading(false)
     }
-    reader.readAsDataURL(file)
+    try {
+      reader.readAsDataURL(file)
+    } catch {
+      setErrors((current) => ({ ...current, photo: 'This image could not be previewed. Try another file.' }))
+      setImageName('')
+      setImageLoading(false)
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    setSubmissionError('')
     const nextErrors: Partial<Record<FieldName, string>> = {}
     if (!description.trim()) nextErrors.description = 'Describe the issue before submitting.'
     if (!category) nextErrors.category = 'Choose an issue category.'
@@ -65,22 +73,27 @@ export function CitizenReportPage() {
     if (Object.keys(nextErrors).length > 0 || imageLoading) return
 
     setSubmitting(true)
-    const reportInput = {
-      description: description.trim(),
-      category,
-      location: location.trim() || `Ward ${ward}`,
-      ward: ward ? Number(ward) : null,
-      imageUrl: imagePreview,
-      inputType: imagePreview ? 'Photo' as const : inputType,
+    try {
+      const reportInput = {
+        description: description.trim(),
+        category,
+        location: location.trim() || `Ward ${ward}`,
+        ward: ward ? Number(ward) : null,
+        imageUrl: imagePreview,
+        inputType: imagePreview ? 'Photo' as const : inputType,
+      }
+      const analysis = await analyzeCitizenReport(reportInput)
+      const report = createCitizenReport({
+        ...reportInput,
+        analysis,
+      })
+      setSubmitted(report)
+      setToastMessage('Your report has been received.')
+    } catch {
+      setSubmissionError('We could not finish submitting your report. Please try again; your entries are still here.')
+    } finally {
+      setSubmitting(false)
     }
-    const analysis = await analyzeCitizenReport(reportInput)
-    const report = createCitizenReport({
-      ...reportInput,
-      analysis,
-    })
-    setSubmitted(report)
-    setSubmitting(false)
-    setToastMessage('Your report has been received.')
   }
 
   function startAnotherReport() {
@@ -93,6 +106,7 @@ export function CitizenReportPage() {
     setImagePreview(null)
     setImageName('')
     setErrors({})
+    setSubmissionError('')
   }
 
   return <>
@@ -119,6 +133,7 @@ export function CitizenReportPage() {
           <div className="analysis-field"><span>Suggested department</span><strong>{submitted.analysis.suggestedDepartment}</strong></div>
         </div>
         <div className="analysis-copy"><span>Issue summary</span><p>{submitted.analysis.summary}</p></div>
+        {submitted.analysis.evidence.length > 0 && <div className="analysis-copy"><span>Evidence signals</span><p>{submitted.analysis.evidence.join(' · ')}</p></div>}
         <div className="analysis-copy"><span>AI recommended action</span><p>{submitted.analysis.recommendedAction}</p><small>Officer confirmation required.</small></div>
         {matchedIssue && <div className="related-issue"><Check size={14} /><span><strong>{matchedIssue.reportCount} related reports</strong> connected to {matchedIssue.title}, Ward {matchedIssue.ward}</span></div>}
       </section>}
@@ -152,6 +167,7 @@ export function CitizenReportPage() {
           <div className="form-label">Voice report <span className="form-help">Demo fallback · no speech recognition</span></div>
           <div className="voice-placeholder"><span style={{ display: 'flex', alignItems: 'center', gap: 9 }}><span className="upload-icon"><Mic size={15} /></span><span><strong>Voice input is not enabled here</strong><span>Insert an editable demo transcript instead.</span></span></span><Button type="button" variant="secondary" size="small" icon={<Mic size={13} />} onClick={() => { setDescription(demoTranscript); setInputType('Voice'); setErrors((current) => ({ ...current, description: undefined })) }}>Use demo transcript</Button></div>
         </div>
+        {submissionError && <p className="form-error" role="alert">{submissionError}</p>}
         <Button type="submit" disabled={submitting || imageLoading} icon={submitting ? <LoaderCircle className="spin" size={15} /> : <ArrowRight size={15} />}>{submitting ? 'Submitting report…' : 'Submit report'}</Button>
         <p className="footer-note" style={{ marginTop: -10 }}><ShieldCheck size={11} style={{ verticalAlign: 'middle' }} /> Demo data is saved in this browser only. No official service request is sent.</p>
       </form></Card>
